@@ -1,0 +1,17 @@
+{
+  "name": "attrace-contracts",
+  "version": "0.0.1",
+  "description": "``` truffle test truffle compile truffle migrate --network development ```",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "zeppelin-solidity": "1.7.0"
+  }
+}
