@@ -131,8 +131,8 @@ contract('Test Attrace ERC20 token', async (accounts) => {
     const tx = await instance.setAddressVestingPlan(accounts[1], 1000000000*0.22*0.25)
     const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
     assert.equal(amount.toNumber(), 55000000)
-    const amount = await instance.getAddressVestingPlanTotalAmountLocked(accounts[1])
-    assert.equal(amount.toNumber(), 55000000)
+    const total = await instance.getAddressVestingPlanTotalAmountLocked(accounts[1])
+    assert.equal(total.toNumber(), 55000000)
     const stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 4)
   })
@@ -167,5 +167,11 @@ contract('Test Attrace ERC20 token', async (accounts) => {
       expect(e.message).to.have.string('revert')
     }
   })
+
+  // web3.currentProvider.send({jsonrpc: "2.0", method: "evm_increaseTime", params: [12345], id: 0})
+  // { id: 0, jsonrpc: '2.0', result: 12345 }
+  // > web3.currentProvider.send({jsonrpc: "2.0", method: "evm_mine", params: [], id: 0})
+  // > web3.eth.getBlock(web3.eth.blockNumber).timestamp
+  // it("Vested tokens should not release in the first 6 months")
 
 })

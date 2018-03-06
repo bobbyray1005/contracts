@@ -24,7 +24,7 @@ contract AttraceToken is PausableToken {
     struct VestingPlan {
       uint64 totalAmountLocked;       // Total amount of ATTR that was locked initially
       uint64 lockedAmountRemaining;   // Total amount of ATTR that is still locked
-      uint64 stage;                   // Stage at which the plan currently is at
+      uint8  stage;                   // Stage at which the plan currently is at
     }
 
     // Tokens of founders & advisors are under vesting and can only be used in chunks after lockup times pass.
@@ -81,7 +81,7 @@ contract AttraceToken is PausableToken {
       require(addr != address(0));
       require(lockedAmountInATTR >= 1);
       vestingPlans[addr] = VestingPlan({ 
-        lockedAmountRemaining: lockedAmountInATTR, 
+        lockedAmountRemaining: lockedAmountInATTR,
         totalAmountLocked: lockedAmountInATTR,
         stage: 4
       });
@@ -115,12 +115,12 @@ contract AttraceToken is PausableToken {
         // See if we need to update vesting plan (time expired)
         if (vestingPlans[_addr].stage != newStage) {
           uint256 vestSlice = SafeMath.div(vestingPlans[_addr].totalAmountLocked, 4);
-          uint256 newLockedAmountRemaining = SafeMath.sub(vestingPlans[_addr].lockedAmountRemaining, SafeMath.mul(vestingPlans[_addr].stage-newStage, vestSlice));
+          uint256 newLockedAmountRemaining = SafeMath.sub(vestingPlans[_addr].lockedAmountRemaining, SafeMath.mul(vestingPlans[_addr].stage - newStage, vestSlice));
           // if (newLockedAmountRemaining < 0) {
           //   newLockedAmountRemaining = 0;
           //   newStage = 0;
           // }
-          vestingPlans[_addr].stage = uint64(newStage);
+          vestingPlans[_addr].stage = newStage;
           vestingPlans[_addr].lockedAmountRemaining = uint64(newLockedAmountRemaining);
         }
       }
@@ -137,7 +137,7 @@ contract AttraceToken is PausableToken {
       return vestingPlans[addr].lockedAmountRemaining;
     }
 
-    function getAddressVestingPlanTotalAmountLocked(address addr) public view returns (uint8) {
+    function getAddressVestingPlanTotalAmountLocked(address addr) public view returns (uint64) {
       require(addr != address(0));
       return vestingPlans[addr].totalAmountLocked;
     }
