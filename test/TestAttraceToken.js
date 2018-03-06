@@ -99,6 +99,9 @@ contract('Test Attrace ERC20 token', async (accounts) => {
     await instance.setTransfersEnabled()
     status  = await instance.transfersEnabled.call()
     assert.equal(status, true)
+    let incubationTime = await instance.incubationTime.call()
+    assert.isAbove(incubationTime.toNumber(), Date.now()/1000 - 10)
+    assert.isBelow(incubationTime.toNumber(), Date.now()/1000 + 10)
   })
 
   it("After enabling transfers, anybody can transfer their tokens", async () => {
@@ -119,8 +122,50 @@ contract('Test Attrace ERC20 token', async (accounts) => {
     await instance.setTransfersEnabled()
     const tx = await instance.transfer(accounts[1], 20000)
     // console.log('HASH', hash)
-    assert.isAbove(tx.receipt.gasUsed, 0)
+    assert.isAbove(tx.receipt.gasUsed, 20000)
     assert.isBelow(tx.receipt.gasUsed, 60000)
+  })
+
+  it("AttraceProject should be able to set vesting plans before ICO and plans should be saved", async () => {
+    const instance = await AttraceToken.new()
+    const tx = await instance.setAddressVestingPlan(accounts[1], 1000000000*0.22*0.25)
+    const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
+    assert.equal(amount.toNumber(), 55000000)
+    const amount = await instance.getAddressVestingPlanTotalAmountLocked(accounts[1])
+    assert.equal(amount.toNumber(), 55000000)
+    const stage = await instance.getAddressVestingPlanStage(accounts[1])
+    assert.equal(stage.toNumber(), 4)
+  })
+
+  it("Others can never set vesting plans", async () => {
+    const instance = await AttraceToken.new()
+    try {
+      await instance.setAddressVestingPlan(accounts[1], 1000000000*0.22*0.25, { from: accounts[1] })
+      assert.fail("unreachable")
+    } catch (e) {
+      expect(e.message).to.have.string('revert')
+    }
+  })
+
+  it("Nobody should not be able to set or change vesting plans after ICO", async () => {
+    const instance = await AttraceToken.new()
+    const tx = await instance.setAddressVestingPlan(accounts[1], 1000000000*0.22*0.25)
+    await instance.setTransfersEnabled() // ICO
+    // Validate attrace
+    try {
+      await instance.setAddressVestingPlan(accounts[2], 10000)
+      assert.fail("unreachable")
+    } catch (e) {
+      expect(e.message).to.have.string('revert')
+    }
+    // Validate others
+    try {
+      await instance.setAddressVestingPlan(accounts[2], 10000, { from: accounts[2] })
+      await instance.setAddressVestingPlan(accounts[2], 10000, { from: accounts[1] })
+      assert.fail("unreachable")
+    } catch (e) {
+      expect(e.message).to.have.string('revert')
+    }
   })
 
 })

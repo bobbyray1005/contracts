@@ -1,6 +1,7 @@
 pragma solidity ^0.4.18;
 
 import '../node_modules/zeppelin-solidity/contracts/token/ERC20/PausableToken.sol';
+import '../node_modules/zeppelin-solidity/contracts/math/SafeMath.sol';
 
 // AttraceToken
 contract AttraceToken is PausableToken {
@@ -14,7 +15,20 @@ contract AttraceToken is PausableToken {
     bool public transfersEnabled = false;
     
     // Attrace can allow partical addresses (our crowdsale contract) to transfer tokens despite the lock up period.
-    mapping (address => bool) public transferWhitelist;
+    mapping (address => bool) private transferWhitelist;
+
+    // Block timestamp lock up is removed
+    uint256 public incubationTime;
+
+    // A VestingPlan defines a locked amount of Attrace, which will only unlock in stages after a certain period of time is passed.
+    struct VestingPlan {
+      uint64 totalAmountLocked;       // Total amount of ATTR that was locked initially
+      uint64 lockedAmountRemaining;   // Total amount of ATTR that is still locked
+      uint64 stage;                   // Stage at which the plan currently is at
+    }
+
+    // Tokens of founders & advisors are under vesting and can only be used in chunks after lockup times pass.
+    mapping (address => VestingPlan) private vestingPlans;
 
     function AttraceToken() public {
       balances[msg.sender] = initialSupply; 
@@ -38,24 +52,98 @@ contract AttraceToken is PausableToken {
       _;
     }
 
-    modifier whenTransfersDisabled() {
+    modifier amountIsLockfree(address _sender, uint256 amount) {
       if (transfersEnabled) {
-          revert();
+        if (vestingPlans[_sender].lockedAmountRemaining >= 0) {
+          if ((balances[_sender] - SafeMath.mul(vestingPlans[_sender].lockedAmountRemaining, 18)) <= 0) {
+            revert();
+          } 
+        }
       }
       _;
     }
 
-    function setTransferWhitelistAddress(address addr, bool state) onlyOwner whenTransfersDisabled public {
+    modifier whenTransfersEnabled(bool _status) {
+      if (transfersEnabled != _status) {
+        revert();
+      }
+      _;
+    }
+
+    // Before incubation, AttraceProject can whitelist some addresses that can transfer coins (presale, crowdsale, initial distribution)
+    function setTransferWhitelistAddress(address addr, bool state) onlyOwner whenTransfersEnabled(false) public {
+      require(addr != address(0));
       transferWhitelist[addr] = state;
     }
+
+    // AttraceProject can set vesting plans before incubation
+    function setAddressVestingPlan(address addr, uint64 lockedAmountInATTR) onlyOwner whenTransfersEnabled(false) public {
+      require(addr != address(0));
+      require(lockedAmountInATTR >= 1);
+      vestingPlans[addr] = VestingPlan({ 
+        lockedAmountRemaining: lockedAmountInATTR, 
+        totalAmountLocked: lockedAmountInATTR,
+        stage: 4
+      });
+    }
   
-    // Attrace can enable token trading once
+    // AttraceProject can call once to enable trading
+    // TODO fat-finger gutfeeling tells to make this a two-phase commit
     function setTransfersEnabled() public onlyOwner {
       transfersEnabled = true;
+      incubationTime = block.timestamp;
+    }
+
+    // To be called for updating vesting plan for an address, to be called directly or by AttraceProject
+    function updateVestingPlan(address _addr) whenTransfersEnabled(true) public returns (uint64) {
+      require(_addr != address(0));
+      require(msg.sender == _addr || msg.sender == owner);
+      if (vestingPlans[_addr].lockedAmountRemaining > 0) {
+        uint256 timeSinceIncubation = block.timestamp - incubationTime;
+        uint8 newStage;
+        if (timeSinceIncubation <= 180 days) {
+          newStage = 4;
+        } else if (timeSinceIncubation > 180 days && timeSinceIncubation <= 1 years) {
+          newStage = 3;
+        } else if (timeSinceIncubation > 1 years && timeSinceIncubation <= (1 years + 180 days)) {
+          newStage = 2;
+        } else if (timeSinceIncubation > (1 years + 180 days) && timeSinceIncubation <= 2 years) {
+          newStage = 1;
+        } else {
+          newStage = 0;
+        }
+        // See if we need to update vesting plan (time expired)
+        if (vestingPlans[_addr].stage != newStage) {
+          uint256 vestSlice = SafeMath.div(vestingPlans[_addr].totalAmountLocked, 4);
+          uint256 newLockedAmountRemaining = SafeMath.sub(vestingPlans[_addr].lockedAmountRemaining, SafeMath.mul(vestingPlans[_addr].stage-newStage, vestSlice));
+          // if (newLockedAmountRemaining < 0) {
+          //   newLockedAmountRemaining = 0;
+          //   newStage = 0;
+          // }
+          vestingPlans[_addr].stage = uint64(newStage);
+          vestingPlans[_addr].lockedAmountRemaining = uint64(newLockedAmountRemaining);
+        }
+      }
     }
 
     /** Accessor functions for testing -- can be removed at deploy time **/
     function getAddressTransferWhitelistStatus(address addr) public view returns (bool) {
+      require(addr != address(0));
       return transferWhitelist[addr];
+    }
+
+    function getAddressVestingPlanLockedAmountRemaining(address addr) public view returns (uint64) {
+      require(addr != address(0));
+      return vestingPlans[addr].lockedAmountRemaining;
+    }
+
+    function getAddressVestingPlanTotalAmountLocked(address addr) public view returns (uint8) {
+      require(addr != address(0));
+      return vestingPlans[addr].totalAmountLocked;
+    }
+
+    function getAddressVestingPlanStage(address addr) public view returns (uint8) {
+      require(addr != address(0));
+      return vestingPlans[addr].stage;
     }
 }
