@@ -1,17 +1,17 @@
 {
   "name": "attrace-contracts",
-  "version": "0.0.1",
-  "description": "``` truffle test truffle compile truffle migrate --network development ```",
+  "version": "0.1.0",
+  "description": "Attrace contracts for token",
   "main": "index.js",
   "directories": {
     "test": "test"
   },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
+  "scripts": {},
+  "author": "Roel Berger <berger.roel@gmail.com>",
+  "license": "MIT",
   "dependencies": {
+    "bignumber.js": "git+https://github.com/frozeman/bignumber.js-nolookahead.git",
+    "moment": "2.21.0",
     "zeppelin-solidity": "1.7.0"
   }
 }
