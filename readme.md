@@ -19,3 +19,10 @@ Run in another session
 ```
 truffle test
 ```
+
+## Deploy
+```
+truffle compile 
+truffle migrate --network development
+```
+

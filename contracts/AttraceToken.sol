@@ -14,6 +14,10 @@ contract AttraceToken is PausableToken {
     // Token trading can start after ICO has ended
     bool public transfersEnabled = false;
     
+    // Two-phase commit to release the token for transfer
+    mapping (address => int8) private releaseWhitelist;
+    uint256 public releaseCommits = 0;
+    
     // Attrace can allow partical addresses (our crowdsale contract) to transfer tokens despite the lock up period.
     mapping (address => bool) private transferWhitelist;
 
@@ -89,13 +93,29 @@ contract AttraceToken is PausableToken {
       });
     }
   
-    // AttraceProject can call once to enable trading
-    // TODO implement two-phase against fat-finger issues
+    // This function will make the token available for trading.
+    // We apply some fat-finger protection, this needs to be called twice, from different white-listed accounts.
+    // Each white listed account can call the function only once.
     event TransfersEnabled(uint256 indexed timestamp);
-    function setTransfersEnabled() public onlyOwner {
-      transfersEnabled = true;
-      incubationTime = block.timestamp;
-      TransfersEnabled(block.timestamp);
+    function setTransfersEnabled() public {
+      require(releaseWhitelist[msg.sender] > 0 && releaseWhitelist[msg.sender] < 2);
+      releaseWhitelist[msg.sender] = 2;
+      releaseCommits = releaseCommits + 1;
+      if (releaseCommits >= 2) {
+        transfersEnabled = true;
+        incubationTime = block.timestamp;
+        TransfersEnabled(block.timestamp);
+      }
+    }
+
+    // Set accounts which can unlock the token for trading/transfers
+    // Possible values:
+    //   Disabled: -1
+    //   Has powers: 1
+    //   Used powers: 2
+    function setReleaseWhitelistStatus(address addr, int8 status) onlyOwner whenTransfersEnabled(false) public {
+      require(addr != address(0));
+      releaseWhitelist[addr] = status;
     }
 
     // To be called for updating vesting plan for an address, to be called directly or by AttraceProject
@@ -141,6 +161,11 @@ contract AttraceToken is PausableToken {
     function getAddressTransferWhitelistStatus(address addr) public view returns (bool) {
       require(addr != address(0));
       return transferWhitelist[addr];
+    }
+
+    function getAddressReleaseWhitelistStatus(address addr) public view returns (int8) {
+      require(addr != address(0));
+      return releaseWhitelist[addr];
     }
 
     function getAddressVestingPlanLockedAmountRemaining(address addr) public view returns (uint64) {
