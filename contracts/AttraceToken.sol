@@ -17,7 +17,7 @@ contract AttraceToken is PausableToken {
     // Attrace can allow partical addresses (our crowdsale contract) to transfer tokens despite the lock up period.
     mapping (address => bool) private transferWhitelist;
 
-    // Block timestamp lock up is removed
+    // Block.timestamp when the transfer lockup is removed (when ICO has officially ended)
     uint256 public incubationTime;
 
     // A VestingPlan defines a locked amount of Attrace, which will only unlock in stages after a certain period of time is passed.
@@ -25,6 +25,7 @@ contract AttraceToken is PausableToken {
       uint64 totalAmountLocked;       // Total amount of ATTR that was locked initially
       uint64 lockedAmountRemaining;   // Total amount of ATTR that is still locked
       uint8  stage;                   // Stage at which the plan currently is at
+      bool   team;                    // true = team, false = advisor/early supporter
     }
 
     // Tokens of founders & advisors are under vesting and can only be used in chunks after lockup times pass.
@@ -35,11 +36,11 @@ contract AttraceToken is PausableToken {
       totalSupply_ = initialSupply;
     }
     
-    function transfer(address _to, uint256 _value) canTransfer(msg.sender) public returns (bool) {
+    function transfer(address _to, uint256 _value) canTransfer(msg.sender) transferAmountIsUnlocked(msg.sender, _value) public returns (bool) {
         return super.transfer(_to, _value);
     }
 
-    function transferFrom(address _from, address _to, uint256 _value) canTransfer(_from) public returns (bool) {
+    function transferFrom(address _from, address _to, uint256 _value) canTransfer(_from) transferAmountIsUnlocked(_from, _value) public returns (bool) {
         return super.transferFrom(_from, _to, _value);
     }
 
@@ -52,12 +53,12 @@ contract AttraceToken is PausableToken {
       _;
     }
 
-    modifier amountIsLockfree(address _sender, uint256 amount) {
+    modifier transferAmountIsUnlocked(address _sender, uint256 _amount) {
       if (transfersEnabled) {
-        if (vestingPlans[_sender].lockedAmountRemaining >= 0) {
-          if ((balances[_sender] - SafeMath.mul(vestingPlans[_sender].lockedAmountRemaining, 18)) <= 0) {
+        if (vestingPlans[_sender].lockedAmountRemaining > 0) {
+          if ((balances[_sender] - SafeMath.mul(vestingPlans[_sender].lockedAmountRemaining, 1E18)) < _amount) {
             revert();
-          } 
+          }
         }
       }
       _;
@@ -77,56 +78,66 @@ contract AttraceToken is PausableToken {
     }
 
     // AttraceProject can set vesting plans before incubation
-    function setAddressVestingPlan(address addr, uint64 lockedAmountInATTR) onlyOwner whenTransfersEnabled(false) public {
+    function setAddressVestingPlan(address addr, uint64 lockedAmountInATTR, bool team) onlyOwner whenTransfersEnabled(false) public {
       require(addr != address(0));
       require(lockedAmountInATTR >= 1);
       vestingPlans[addr] = VestingPlan({ 
         lockedAmountRemaining: lockedAmountInATTR,
         totalAmountLocked: lockedAmountInATTR,
-        stage: 4
+        stage: (team ? 4 : 1),
+        team: team
       });
     }
   
     // AttraceProject can call once to enable trading
-    // TODO fat-finger gutfeeling tells to make this a two-phase commit
+    // TODO implement two-phase against fat-finger issues
+    event TransfersEnabled(uint256 indexed timestamp);
     function setTransfersEnabled() public onlyOwner {
       transfersEnabled = true;
       incubationTime = block.timestamp;
+      TransfersEnabled(block.timestamp);
     }
 
     // To be called for updating vesting plan for an address, to be called directly or by AttraceProject
+    // The half-yearly cliffs don't match exactly to the first of the 7th month, but it doesn't matter and averages out over time 
     function updateVestingPlan(address _addr) whenTransfersEnabled(true) public returns (uint64) {
       require(_addr != address(0));
       require(msg.sender == _addr || msg.sender == owner);
       if (vestingPlans[_addr].lockedAmountRemaining > 0) {
         uint256 timeSinceIncubation = block.timestamp - incubationTime;
         uint8 newStage;
-        if (timeSinceIncubation <= 180 days) {
-          newStage = 4;
-        } else if (timeSinceIncubation > 180 days && timeSinceIncubation <= 1 years) {
-          newStage = 3;
-        } else if (timeSinceIncubation > 1 years && timeSinceIncubation <= (1 years + 180 days)) {
-          newStage = 2;
-        } else if (timeSinceIncubation > (1 years + 180 days) && timeSinceIncubation <= 2 years) {
-          newStage = 1;
+        if (vestingPlans[_addr].team) {
+          if (timeSinceIncubation <= 180 days) {
+            newStage = 4;
+          } else if (timeSinceIncubation > 180 days && timeSinceIncubation <= 1 years) {
+            newStage = 3;
+          } else if (timeSinceIncubation > 1 years && timeSinceIncubation <= (1 years + 180 days)) {
+            newStage = 2;
+          } else if (timeSinceIncubation > (1 years + 180 days) && timeSinceIncubation <= 2 years) {
+            newStage = 1;
+          } else {
+            newStage = 0;
+          }
         } else {
-          newStage = 0;
+          if (timeSinceIncubation > 180 days) {
+            newStage = 0;
+          }
         }
+        
         // See if we need to update vesting plan (time expired)
         if (vestingPlans[_addr].stage != newStage) {
-          uint256 vestSlice = SafeMath.div(vestingPlans[_addr].totalAmountLocked, 4);
+          uint256 vestSlice = SafeMath.div(vestingPlans[_addr].totalAmountLocked, (vestingPlans[_addr].team ? 4 : 1));
           uint256 newLockedAmountRemaining = SafeMath.sub(vestingPlans[_addr].lockedAmountRemaining, SafeMath.mul(vestingPlans[_addr].stage - newStage, vestSlice));
-          // if (newLockedAmountRemaining < 0) {
-          //   newLockedAmountRemaining = 0;
-          //   newStage = 0;
-          // }
+          if (newLockedAmountRemaining <= 0) {
+            newLockedAmountRemaining = 0;
+            newStage = 0;
+          }
           vestingPlans[_addr].stage = newStage;
           vestingPlans[_addr].lockedAmountRemaining = uint64(newLockedAmountRemaining);
         }
       }
     }
 
-    /** Accessor functions for testing -- can be removed at deploy time **/
     function getAddressTransferWhitelistStatus(address addr) public view returns (bool) {
       require(addr != address(0));
       return transferWhitelist[addr];
@@ -145,5 +156,10 @@ contract AttraceToken is PausableToken {
     function getAddressVestingPlanStage(address addr) public view returns (uint8) {
       require(addr != address(0));
       return vestingPlans[addr].stage;
+    }
+
+    /** Accessor functions for testing -- will be removed at deploy time **/
+    function getBlockTimestamp() public view returns (uint256) {
+      return block.timestamp;
     }
 }
