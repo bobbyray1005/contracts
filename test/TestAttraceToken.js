@@ -1,7 +1,8 @@
 const BigNumber = require('bignumber.js')
 const AttraceToken = artifacts.require("AttraceToken")
-const totalSupply = new BigNumber('1000000000e18')
 const moment = require('moment')
+
+const totalSupply = new BigNumber('1000000000e18')
 
 contract('Test Attrace ERC20 :: Direct properties', async (accounts) => {
   it("It should seed the initial supply to the AttraceProject", async () => {
@@ -228,7 +229,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     }
   })
 
-  it("Team accounts under vesting should not be able to transfer amounts that are not unlocked", async () => {
+  it("Team accounts under vesting should not be able to transfer amounts which are not unlocked", async () => {
     const instance = await AttraceToken.new()
     const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
@@ -239,7 +240,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     const attr500 = new BigNumber('500e18')
     const attr1 = new BigNumber('1e18')
     await instance.transfer(accounts[1], attr1000)
-    // Validate different values that should all be impossible
+    // Validate different values which should all be impossible
     const testValues = [attr1000, attr500, 1, 2, 999, 1001, attr999, attr1001, attr1]
     for(let i = 0; i < testValues.length; i++) {
       try {
@@ -257,7 +258,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     assert.isTrue(attr1000.equals(balance))
   })
 
-  it("Advisors/early-supporters under vesting should not be able to transfer amounts that are not unlocked", async () => {
+  it("Advisors/early-supporters under vesting should not be able to transfer amounts which are not unlocked", async () => {
     const instance = await AttraceToken.new()
     const tx = await instance.setAddressVestingPlan(accounts[1], 1000, false)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
@@ -268,7 +269,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     const attr500 = new BigNumber('500e18')
     const attr1 = new BigNumber('1e18')
     await instance.transfer(accounts[1], attr1000)
-    // Validate different values that should all be impossible
+    // Validate different values which should all be impossible
     const testValues = [attr1000, attr500, 1, 2, 999, 1001, attr999, attr1001, attr1]
     for(let i = 0; i < testValues.length; i++) {
       try {
@@ -328,11 +329,35 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await web3.eth.getBlock(web3.eth.blockNumber).timestamp
   }
 
-  it("Full transfer test - after the first vesting period expired, 25% should be unlocked and transferable", async () => {
+  it("Full transfer test - after incubation, 20% should be unlocked and transferable", async () => {
     const instance = await AttraceToken.new()
     await instance.setTransferWhitelistAddress(accounts[0], true)
     await instance.transfer(accounts[1], new BigNumber('1000e18'))
-    const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
+    // We lock 80% in the vesting plan
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
+    await setTransfersEnabled2PhaseCommit(instance, accounts)
+
+    // Update the vesting plan
+    await instance.updateVestingPlan(accounts[1])
+    const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
+    assert.equal(amount.toNumber(), 800)
+    const total = await instance.getAddressVestingPlanTotalAmountLocked(accounts[1])
+    assert.equal(total.toNumber(), 800)
+    const stage = await instance.getAddressVestingPlanStage(accounts[1])
+    assert.equal(stage.toNumber(), 4)
+
+    // Make sure 20% is transferable
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
+    const balance = await instance.balanceOf(accounts[1])
+    assert.isTrue(balance.equals(new BigNumber('800e18')))
+    await instance.transfer(accounts[1], new BigNumber('200e18'), { from: accounts[2] })
+  })
+
+  it("Full transfer test - after the first vesting period expired, 40% should be unlocked and transferable", async () => {
+    const instance = await AttraceToken.new()
+    await instance.setTransferWhitelistAddress(accounts[0], true)
+    await instance.transfer(accounts[1], new BigNumber('1000e18'))
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
 
     // Forward time
@@ -344,31 +369,31 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t0d + 43200) 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('25%:',moment(t0*1000).format(),moment(t1*1000).format())
+    // console.log('40%:',moment(t0*1000).format(),moment(t1*1000).format())
 
     // Update the vesting plan
     await instance.updateVestingPlan(accounts[1])
     const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 750)
+    assert.equal(amount.toNumber(), 600)
     const total = await instance.getAddressVestingPlanTotalAmountLocked(accounts[1])
-    assert.equal(total.toNumber(), 1000)
+    assert.equal(total.toNumber(), 800)
     const stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 3)
 
-    // Make sure we can transfer the 25%
-    await instance.transfer(accounts[2], new BigNumber('250e18'), { from: accounts[1] })
+    // Make sure we can transfer the 40%
+    await instance.transfer(accounts[2], new BigNumber('400e18'), { from: accounts[1] })
     const balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('750e18')))
-    await instance.transfer(accounts[1], new BigNumber('250e18'), { from: accounts[2] })
+    assert.isTrue(balance.equals(new BigNumber('600e18')))
+    await instance.transfer(accounts[1], new BigNumber('400e18'), { from: accounts[2] })
 
     await increaseTime(-t0d-43200)
   })
 
-  it("Full transfer test - after the second vesting period expired, 50% should be unlocked and transferable", async () => {
+  it("Full transfer test - after the second vesting period expired, 60% should be unlocked and transferable", async () => {
     const instance = await AttraceToken.new()
     await instance.setTransferWhitelistAddress(accounts[0], true)
     await instance.transfer(accounts[1], new BigNumber('1000e18'))
-    const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
     
     let time = await instance.getBlockTimestamp()
@@ -379,27 +404,27 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t0d + 43200) 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('50%:',moment(t0*1000).format(),moment(t1*1000).format())
+    // console.log('60%:',moment(t0*1000).format(),moment(t1*1000).format())
     
     await instance.updateVestingPlan(accounts[1])
     const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 500)
+    assert.equal(amount.toNumber(), 400)
     const stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 2)
     
-    await instance.transfer(accounts[2], new BigNumber('500e18'), { from: accounts[1] })
+    await instance.transfer(accounts[2], new BigNumber('600e18'), { from: accounts[1] })
     const balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('500e18')))
-    await instance.transfer(accounts[1], new BigNumber('500e18'), { from: accounts[2] })
+    assert.isTrue(balance.equals(new BigNumber('400e18')))
+    await instance.transfer(accounts[1], new BigNumber('600e18'), { from: accounts[2] })
     
     await increaseTime(-t0d-43200)
   })
 
-  it("Full transfer test - after the third vesting period expired, 75% should be unlocked and transferable", async () => {
+  it("Full transfer test - after the third vesting period expired, 80% should be unlocked and transferable", async () => {
     const instance = await AttraceToken.new()
     await instance.setTransferWhitelistAddress(accounts[0], true)
     await instance.transfer(accounts[1], new BigNumber('1000e18'))
-    const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
     
     let time = await instance.getBlockTimestamp()
@@ -410,18 +435,18 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t0d + 43200) 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('75%:',moment(t0*1000).format(),moment(t1*1000).format())
+    // console.log('80%:',moment(t0*1000).format(),moment(t1*1000).format())
     
     await instance.updateVestingPlan(accounts[1])
     const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 250)
+    assert.equal(amount.toNumber(), 200)
     const stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 1)
     
-    await instance.transfer(accounts[2], new BigNumber('750e18'), { from: accounts[1] })
+    await instance.transfer(accounts[2], new BigNumber('800e18'), { from: accounts[1] })
     const balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('250e18')))
-    await instance.transfer(accounts[1], new BigNumber('750e18'), { from: accounts[2] })
+    assert.isTrue(balance.equals(new BigNumber('200e18')))
+    await instance.transfer(accounts[1], new BigNumber('800e18'), { from: accounts[2] })
     
     await increaseTime(-t0d-43200)
   })
@@ -430,7 +455,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     const instance = await AttraceToken.new()
     await instance.setTransferWhitelistAddress(accounts[0], true)
     await instance.transfer(accounts[1], new BigNumber('1000e18'))
-    const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
     
     let time = await instance.getBlockTimestamp()
@@ -441,7 +466,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t0d + 43200) 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('100%:',moment(t0*1000).format(),moment(t1*1000).format())
+    // console.log('100%:',moment(t0*1000).format(),moment(t1*1000).format())
     
     await instance.updateVestingPlan(accounts[1])
     const amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
@@ -457,33 +482,39 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(-t0d-43200)
   })
 
-  it("Incremental transfer test - every vest period 25% should be unlocked -- calling from account", async () => {
+  it("Incremental transfer test - every vest period 20% should be unlocked -- calling from account", async () => {
     const instance = await AttraceToken.new()
     await instance.setTransferWhitelistAddress(accounts[0], true)
     await instance.transfer(accounts[1], new BigNumber('1000e18'))
-    const tx = await instance.setAddressVestingPlan(accounts[1], 1000, true)
+    const tx = await instance.setAddressVestingPlan(accounts[1], 800, true)
     await setTransfersEnabled2PhaseCommit(instance, accounts)
-    
-    // First cliff
+
+    // After incubation, 20% is available for transfer
     let time = await instance.getBlockTimestamp()
     const t0 = time.toNumber()
+
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
+    let balance = await instance.balanceOf(accounts[1])
+    assert.isTrue(balance.equals(new BigNumber('800e18')))
+    // console.log('20%:',moment(t0*1000).format())
+    
+    // First cliff
     const t1 = moment(t0*1000).add(180, 'days').unix()
     const t0d = t1 - t0
-
     await increaseTime(t0d + 43200) // we add half a day to make sure the contract logic kicks in 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('25%:',moment(t0*1000).format(),moment(t1b*1000).format())
+    // console.log('40%:',moment(t0*1000).format(),moment(t1b*1000).format())
     
     await instance.updateVestingPlan(accounts[1], { from: accounts[1] })
     let amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 750)
+    assert.equal(amount.toNumber(), 600)
     let stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 3)
     
-    await instance.transfer(accounts[2], new BigNumber('250e18'), { from: accounts[1] })
-    let balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('750e18')))
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
+    balance = await instance.balanceOf(accounts[1])
+    assert.isTrue(balance.equals(new BigNumber('600e18')))
 
     // Second cliff
     const t2 = moment(t0*1000).add(1, 'year').unix()
@@ -492,17 +523,17 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t1d + 43200) 
     const t2b = await instance.getBlockTimestamp()
     assert.isAtLeast(t2b, t2)
-    console.log('50%:',moment(t1b*1000).format(),moment(t2b*1000).format())
+    // console.log('60%:',moment(t1b*1000).format(),moment(t2b*1000).format())
     
     await instance.updateVestingPlan(accounts[1], { from: accounts[1] })
     amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 500)
+    assert.equal(amount.toNumber(), 400)
     stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 2)
     
-    await instance.transfer(accounts[2], new BigNumber('250e18'), { from: accounts[1] })
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
     balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('500e18')))
+    assert.isTrue(balance.equals(new BigNumber('400e18')))
 
     // Third cliff
     const t3 = moment(t0*1000).add(1, 'year').add(180, 'days').unix()
@@ -511,17 +542,17 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t2d + 43200) 
     const t3b = await instance.getBlockTimestamp()
     assert.isAtLeast(t3b, t3)
-    console.log('75%:',moment(t2b*1000).format(),moment(t3b*1000).format())
+    // console.log('80%:',moment(t2b*1000).format(),moment(t3b*1000).format())
     
     await instance.updateVestingPlan(accounts[1], { from: accounts[1] })
     amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
-    assert.equal(amount.toNumber(), 250)
+    assert.equal(amount.toNumber(), 200)
     stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 1)
     
-    await instance.transfer(accounts[2], new BigNumber('250e18'), { from: accounts[1] })
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
     balance = await instance.balanceOf(accounts[1])
-    assert.isTrue(balance.equals(new BigNumber('250e18')))
+    assert.isTrue(balance.equals(new BigNumber('200e18')))
 
     // Fourth cliff
     const t4 = moment(t0*1000).add(2, 'year').unix()
@@ -530,7 +561,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t3d + 43200) 
     const t4b = await instance.getBlockTimestamp()
     assert.isAtLeast(t4b, t4)
-    console.log('100%:',moment(t3b*1000).format(),moment(t4b*1000).format())
+    // console.log('100%:',moment(t3b*1000).format(),moment(t4b*1000).format())
     
     await instance.updateVestingPlan(accounts[1], { from: accounts[1] })
     amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])
@@ -538,7 +569,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     stage = await instance.getAddressVestingPlanStage(accounts[1])
     assert.equal(stage.toNumber(), 0)
     
-    await instance.transfer(accounts[2], new BigNumber('250e18'), { from: accounts[1] })
+    await instance.transfer(accounts[2], new BigNumber('200e18'), { from: accounts[1] })
     balance = await instance.balanceOf(accounts[1])
     assert.isTrue(balance.equals(0))
   })
@@ -564,7 +595,7 @@ contract('Test Attrace ERC20 :: Vesting plans on token', async (accounts) => {
     await increaseTime(t0d + 43200) // we add half a day to make sure the contract logic kicks in 
     const t1b = await instance.getBlockTimestamp()
     assert.isAtLeast(t1b, t1)
-    console.log('100%:',moment(t0*1000).format(),moment(t1b*1000).format())
+    // console.log('100%:',moment(t0*1000).format(),moment(t1b*1000).format())
     
     await instance.updateVestingPlan(accounts[1])
     amount = await instance.getAddressVestingPlanLockedAmountRemaining(accounts[1])

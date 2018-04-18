@@ -24,7 +24,7 @@ contract AttraceToken is PausableToken {
     // Block.timestamp when the transfer lockup is removed (when ICO has officially ended)
     uint256 public incubationTime;
 
-    // A VestingPlan defines a locked amount of Attrace, which will only unlock in stages after a certain period of time is passed.
+    // A VestingPlan defines a locked amount of ATTR, which will only unlock in stages after a certain period of time is passed.
     struct VestingPlan {
         uint64 totalAmountLocked;       // Total amount of ATTR that was locked initially
         uint64 lockedAmountRemaining;   // Total amount of ATTR that is still locked
@@ -32,7 +32,7 @@ contract AttraceToken is PausableToken {
         bool   team;                    // true = team, false = advisor/early supporter
     }
 
-    // Tokens of founders & advisors are under vesting and can only be used in chunks after lockup times pass.
+    // Tokens of team & advisors are under vesting rules and can only be used in chunks after lockup times pass.
     mapping (address => VestingPlan) private vestingPlans;
 
     function AttraceToken() public {
