@@ -6,12 +6,20 @@
   "directories": {
     "test": "test"
   },
-  "scripts": {},
+  "scripts": {
+    "lint": "node_modules/.bin/eslint test/*.js"
+  },
   "author": "Roel Berger <berger.roel@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "bignumber.js": "git+https://github.com/frozeman/bignumber.js-nolookahead.git",
     "moment": "2.21.0",
     "zeppelin-solidity": "1.7.0"
+  },
+  "devDependencies": {
+    "babel-eslint": "^8.2.3",
+    "eslint": "^4.19.1",
+    "eslint-config-airbnb": "^16.1.0",
+    "eslint-plugin-import": "^2.11.0"
   }
 }
